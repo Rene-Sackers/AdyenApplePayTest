@@ -1,0 +1,168 @@
+﻿@using AdyenApplePayTest.Helpers
+@using Newtonsoft.Json
+@{
+	ViewBag.Title = "Home Page";
+}
+
+Settings:
+<pre>
+@Html.Raw(JsonConvert.SerializeObject(SettingsHelper.GetSettings(), Formatting.Indented))
+</pre>
+
+<button id="start-apple-pay">Start ApplePay</button>
+<br/>
+
+Log:
+<ul id="log">
+</ul>
+
+@section scripts
+{
+	<script>
+		var applePaySession = null;
+
+		function writeLog(data) {
+			const li = document.createElement("li");
+			li.innerText = typeof(data) === "string" ? data : JSON.stringify(data);
+			document.getElementById("log").appendChild(li);
+		}
+
+		function initializeApplePay() {
+			writeLog("initializing");
+			if (typeof (ApplePaySession) === "undefined") {
+				alert("ApplePaySession not defined");
+				return;
+			}
+
+			if (!ApplePaySession.canMakePayments()) {
+				alert("ApplePaySession.canMakePayments() = false");
+				return;
+			}
+
+			document.getElementById("start-apple-pay").addEventListener("click", startApplePay);
+			writeLog("initialized");
+		}
+
+		function getPaymentRequest() {
+			const total = {
+				amount: "123.45",
+				label: "Total",
+				type: "final"
+			};
+
+			const lineItem = {
+				amount: "123.45",
+				label: "Example product",
+				type: "final"
+			};
+
+			const paymentRequest = {
+				merchantCapabilities: [
+					"supports3DS",
+					"supportsCredit",
+					"supportsDebit",
+					"supportsEMV"
+				],
+				supportedNetworks: ["amex", "masterCard", "discover", "maestro", "visa", "mada"],
+				countryCode: "NL",
+				requiredBillingContactFields: [
+					"email",
+					"name",
+					"phone",
+					"postalAddress"
+				],
+				billingContact: {
+					countryCode: "NL",
+					addressLines: [
+						"Stationsplein 1"
+					],
+					locality: "Eindhoven",
+					postalCode: "5611AC",
+					country: "The Netherlands",
+					emailAddress: "example@example.com",
+					givenName: "Firstname",
+					familyName: "Lastname",
+					phoneNumber: "06123456789"
+				},
+				shippingContact: {
+					countryCode: "NL",
+					addressLines: [
+						"Stationsplein 1"
+					],
+					locality: "Eindhoven",
+					postalCode: "5611AC",
+					country: "The Netherlands",
+					emailAddress: "example@example.com",
+					givenName: "Firstname",
+					familyName: "Lastname",
+					phoneNumber: "06123456789"
+				},
+				total: total,
+				lineItems: [lineItem],
+				currencyCode: "EUR",
+				shippingType: "delivery",
+				shippingMethods: [
+					{
+						label: "Example shipping label",
+						detail: "Example shipping detail",
+						amount: "21.50",
+						identifier: "1"
+					}
+				]
+			};
+
+			return paymentRequest;
+		}
+
+		function startApplePay() {
+			writeLog("startApplePay");
+			const paymentRequest = getPaymentRequest();
+
+			applePaySession = new ApplePaySession(10, paymentRequest);
+			applePaySession.onvalidatemerchant = applePayOnvalidatemerchant;
+			applePaySession.oncancel = applePayCancel;
+			applePaySession.onpaymentauthorized = applePayOnpaymentauthorized;
+			applePaySession.begin();
+		}
+
+		function applePayOnvalidatemerchant() {
+			writeLog("applePayOnvalidatemerchant");
+
+			$.get("/ApplePay/ValidateMerchantAjax")
+				.done(data => {
+					writeLog("/ApplePay/ValidateMerchantAjax success");
+					completeValidation(data);
+				})
+				.fail(() => {
+					writeLog("/ApplePay/ValidateMerchantAjax failed");
+				});
+		}
+
+		function completeValidation(data) {
+			const sessionData = JSON.parse(atob(data));
+			writeLog("session data");
+			writeLog(sessionData);
+			
+			try {
+				writeLog("call completeMerchantValidation");
+				applePaySession.completeMerchantValidation(sessionData);
+				writeLog("called completeMerchantValidation");
+			} catch (e) {
+				writeLog("completeMerchantValidation threw exception");
+				writeLog(e);
+			}
+		}
+
+		function applePayCancel() {
+			writeLog("applePayCancel");
+		}
+
+		function applePayOnpaymentauthorized(e) {
+			writeLog("applePayOnpaymentauthorized");
+			writeLog(e);
+			writeLog("Token: " + JSON.stringify(e.payment.token.paymentData));
+		}
+
+		$(initializeApplePay);
+	</script>
+}
